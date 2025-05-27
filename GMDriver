@@ -1,0 +1,128 @@
+#!/bin/bash
+######################################################################################
+#
+# This is a script to launch the GMBrowser
+#
+######################################################################################
+
+hstdir=/minerva/data/online_processing/swap_area
+refdir=/minerva/data/online_processing/swap_area
+hstlocal=/minerva/data/users/minerva/data_processing/dst_local
+tmpdir=/tmp
+detprefix='MV'
+localhst=0
+
+if [ -n "$MINERVA_RELEASE" ]; then
+    softrel=${MINERVA_RELEASE}
+else
+    softrel=v10r9p1
+fi
+
+if [ -z "$CONTROLROOMTOOLSROOT" ]; then
+    source /grid/fermiapp/minerva/software_releases/$softrel/setup.sh
+    source ${HOME}/cmtuser/Minerva_$softrel/Tools/ControlRoomTools/cmt/setup.sh
+fi
+
+anaexroot=${CONTROLROOMTOOLSROOT}
+echo "Running from ${anaexroot}"
+
+# input parameters
+helpflag=0
+run=-1
+sub=-1
+file=""
+
+while getopts "r:s:f:hl" options; do
+  case $options in
+	r ) run=$OPTARG;;
+	s ) sub=$OPTARG;;
+        f ) file=$OPTARG;;
+	h ) helpflag=1;;
+	l ) localhst=1;;
+  esac
+done
+
+if [ $helpflag -ne 0 ]; then
+    echo ""
+    echo "Usage: GMBrowser"
+    echo "          -r RunNumber                              (required)"
+    echo "          -s SubRunNumber                           (required)"
+    echo "          -f File name                              (required)"
+    echo "          -l Look at locally produced histograms.   (default is Nearline histograms)"
+    echo "          -h prints this"
+    echo ""
+    echo "      Ex. GMBrowser -r 824 -s 3"
+    echo "      Ex. GMPlotter -r 824"
+    echo "      Ex. GMBrowser -f Histos.root"
+    echo "      Ex. GMBrowser -r 824 -s 3 -l"
+    echo ""
+    exit
+fi
+
+if [ $file ]; then
+    hstname=$file
+elif [ $run -eq -1 -a $sub -eq -1 ]; then
+    echo "No run/subrun number specified. Using default histos file (NearlineCurrentHistos.root)"
+    hstname=$hstdir/NearlineCurrentHistos.root
+elif [ $run -ne -1 -a $sub -eq -1 ]; then
+    padrun=''
+    len=`expr length "$run"`
+    for (( digit=0; digit<8-$len; digit++ ))
+    do
+      padrun="${padrun}0"
+    done
+    padrun="${padrun}$run"
+
+    # find histos file on bluearc
+    hst=$detprefix"_"$padrun"_*_Histos.root"
+    hstnames=`find $hstdir -name $hst -printf "%p "`
+	
+    $ROOTSYS/bin/hadd -f $tmpdir/tmp.root $hstnames
+    hstname=$tmpdir/tmp.root
+else
+    if [ $localhst -eq 1 ]; then
+        echo "Using locally produced histograms."
+        hstdir=$hstlocal
+    else
+        echo "Using histograms produced on nearline system."
+    fi
+    padrun=''
+    len=`expr length "$run"`
+    for (( digit=0; digit<8-$len; digit++ ))
+    do
+      padrun="${padrun}0"
+    done
+    padrun="${padrun}$run"
+
+    padsub=''
+    len=`expr length "$sub"`
+    for (( digit=0; digit<4-$len; digit++ ))
+    do
+      padsub="${padsub}0"
+    done
+    padsub="${padsub}$sub"
+
+    # find histos file on bluearc
+    hst=$hstdir"/"$detprefix"_"$padrun"_"$padsub"*_Histos.root"
+    hstname=`echo $hst`
+    if [ ! -e $hstname ]; then
+        echo "Histos file for run "$run", subrun "$sub" not available."
+        exit
+    else
+        echo $hstname
+    fi
+fi
+
+# variables used in GMBrowser's configuration file (nearline.cfg)
+export histosfile=$hstname
+export refhistosfile=$hstname
+export cfgdir=$anaexroot/gmbrowser
+#export plotsdir=/minerva/data/users/minerva/gmbrowser
+export plotsdir=/home/minerva/cmtuser/Minerva_v10r9p1/Tools/ControlRoomTools/SmartShift/images/gmbrowser
+export helpdir=$anaexroot/gmbrowser/help
+export macrodir=$anaexroot/gmbrowser/macros
+
+# launch GMBrowser
+${anaexroot}/gmbrowser/bin/gmbrowser ${anaexroot}/gmbrowser/nearline.cfg
+
+#sleep 10000000

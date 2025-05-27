@@ -1,0 +1,109 @@
+!/bin/bash
+######################################################################################
+#
+# This is a script to make summary plots from a DST
+#
+######################################################################################
+
+dstdir=/minerva/data/users/minerva/data_processing/dst
+plotsdir=/minerva/data/users/minerva/run_summary_plots
+localdstdir=/home/minerva/DST
+testdir=/home/minerva/test/NUGroup/gmbrowser
+gmbrowserdir=/home/minerva/test/NUGroup/gmbrowser
+ 
+if [ -z "$MINERVA_RELEASE" ]; then
+    softrel=${MINERVA_RELEASE}
+else
+    softrel=v7r2
+fi
+
+if [ -z "$ANALYSISEXAMPLESROOT" ]; then
+    anaexroot=${ANALYSISEXAMPLESROOT}
+else
+    anaexroot=${HOME}/cmtuser/Minerva_$softrel/AnalysisExamples
+fi
+
+echo " using $anaexroot for plot macros "
+
+# input parameters
+helpflag=0
+run=-1
+sub=-1
+
+while getopts "r:s:h" options; do
+  case $options in
+	r ) run=$OPTARG;;
+	s ) sub=$OPTARG;;
+	h ) helpflag=1;;
+  esac
+done
+
+if [ $run -eq -1 -o $sub -eq -1 ]; then
+    helpflag=1
+fi
+
+if [ $helpflag -ne 0 ]; then
+    echo ""
+    echo "Usage: RunSummaryPlots"
+    echo "          -r RunNumber                              (required)"
+    echo "          -s SubRunNumber                           (required)"
+    echo "          -h prints this"
+    echo ""
+    echo "      Ex. RunSummaryPlots -r 824 -s 3"
+    echo ""
+else
+
+
+padrun=''
+len=`expr length "$run"`
+for (( digit=0; digit<8-$len; digit++ ))
+do
+  padrun="${padrun}0"
+done
+padrun="${padrun}$run"
+
+padsub=''
+len=`expr length "$sub"`
+for (( digit=0; digit<4-$len; digit++ ))
+do
+  padsub="${padsub}0"
+done
+padsub="${padsub}$sub"
+
+
+# find DST on bluearc and create summary plots
+dst=$dstdir"/MN_"$padrun"_"$padsub"_*_DST_"$softrel".root"
+plot=$plotsdir"/MN_"$padrun"_"$padsub"_SummaryPlots.ps"
+rootfile=$plotsdir"/MN_"$padrun"_"$padsub"_SummaryPlots.root"
+referencefile=$plotsdir"/reference.root"
+
+echo $plot
+
+echo $rootfile
+
+dstname=`ls $dst`
+if [ ! -e $dstname ]; then
+    echo "DST for run "$run", subrun "$sub" not available. Did you run MakeDST first?"
+else
+    echo $dstname
+    cat - > $localdstdir/rootSummaryPlots.C <<EOF
+void rootSummaryPlots()
+{
+  gROOT->LoadMacro("$anaexroot/plot_macros/analyzeDST.C");
+  gROOT->LoadMacro("$testdir/NewRunSummaryPlots.C");
+  analyzeDST t("$dstname");
+  t.NewRunSummaryPlots("$plot");
+}
+EOF
+
+    konsole -e root -l -q $localdstdir/rootSummaryPlots.C
+    rm summary.root
+    rm reference.root
+    ln -s $rootfile summary.root
+    ln -s $referencefile reference.root
+    $gmbrowserdir/bin/gmbrowser $gmbrowserdir/online.cfg "Online displays"
+    gv $plot &
+fi
+
+fi
+
